@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:glurg_app/providers/card_provider.dart';
 import 'package:glurg_app/widgets/magic_card_display.dart';
 import 'package:glurg_app/screens/settings_screen.dart';
+import 'package:glurg_app/screens/card_scanner_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -40,6 +41,16 @@ class _HomeScreenState extends State<HomeScreen> {
     context.read<CardListProvider>().addCardByName(cardName);
     _cardNameController.clear();
     _cardNameFocus.requestFocus();
+  }
+
+  void _openScanner() async {
+    final scannedName = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const CardScannerScreen()),
+    );
+    if (scannedName != null && scannedName.isNotEmpty && mounted) {
+      context.read<CardListProvider>().addCardByName(scannedName);
+    }
   }
 
   @override
@@ -106,6 +117,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 8),
                         FloatingActionButton.small(
+                          heroTag: 'scan',
+                          onPressed: _openScanner,
+                          tooltip: 'Scan card',
+                          child: const Icon(Icons.camera_alt),
+                        ),
+                        const SizedBox(width: 8),
+                        FloatingActionButton.small(
+                          heroTag: 'add',
                           onPressed: _addCard,
                           tooltip: 'Add card',
                           child: const Icon(Icons.add),

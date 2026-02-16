@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 enum ManaColor { white, blue, black, red, green, colorless, none }
 
+enum FrameType { colorless, mono, split, gold }
+
 class ManaSymbol {
   final String symbol; // e.g., "W", "U", "B", "R", "G", "2", etc.
   final ManaColor color;
@@ -59,6 +61,26 @@ class ManaUtils {
         }
         return null;
     }
+  }
+
+  /// Convert Scryfall color letters ["W", "U", "B", "R", "G"] to ManaColor set
+  static Set<ManaColor> colorsFromLetters(List<String> colorLetters) {
+    final colors = <ManaColor>{};
+    for (final letter in colorLetters) {
+      switch (letter.toUpperCase()) {
+        case 'W':
+          colors.add(ManaColor.white);
+        case 'U':
+          colors.add(ManaColor.blue);
+        case 'B':
+          colors.add(ManaColor.black);
+        case 'R':
+          colors.add(ManaColor.red);
+        case 'G':
+          colors.add(ManaColor.green);
+      }
+    }
+    return colors;
   }
 
   /// Determine card color identity from combined mana costs
@@ -178,6 +200,80 @@ class ManaUtils {
         return Color(0xFFFFD700);
       default:
         return Color(0xFF000000);
+    }
+  }
+
+  /// WUBRG order index for sorting colors
+  static const Map<ManaColor, int> wubrgOrder = {
+    ManaColor.white: 0,
+    ManaColor.blue: 1,
+    ManaColor.black: 2,
+    ManaColor.red: 3,
+    ManaColor.green: 4,
+  };
+
+  /// Sort a set of ManaColors in WUBRG order
+  static List<ManaColor> sortByWubrg(Set<ManaColor> colors) {
+    final list = colors.where((c) => wubrgOrder.containsKey(c)).toList();
+    list.sort((a, b) => (wubrgOrder[a] ?? 99).compareTo(wubrgOrder[b] ?? 99));
+    return list;
+  }
+
+  /// Determine frame type from card colors
+  static FrameType getFrameType(Set<ManaColor> colors) {
+    final meaningful = colors.where((c) => wubrgOrder.containsKey(c)).toSet();
+    if (meaningful.isEmpty) return FrameType.colorless;
+    if (meaningful.length == 1) return FrameType.mono;
+    if (meaningful.length == 2) return FrameType.split;
+    return FrameType.gold;
+  }
+
+  /// Get frame color for a single ManaColor
+  static Color getFrameColorForSingle(ManaColor color) {
+    switch (color) {
+      case ManaColor.white:
+        return const Color(0xFFF0E6D2);
+      case ManaColor.blue:
+        return const Color(0xFF0E47A1);
+      case ManaColor.black:
+        return const Color(0xFF1A1A1A);
+      case ManaColor.red:
+        return const Color(0xFFC13C00);
+      case ManaColor.green:
+        return const Color(0xFF165B33);
+      default:
+        return const Color(0xFFD4A574);
+    }
+  }
+
+  /// Build a LinearGradient for a 2-color split frame (WUBRG order)
+  static LinearGradient buildSplitFrameGradient(Set<ManaColor> colors) {
+    final sorted = sortByWubrg(colors);
+    final leftColor = getFrameColorForSingle(sorted[0]);
+    final rightColor = getFrameColorForSingle(sorted[1]);
+    return LinearGradient(
+      colors: [leftColor, leftColor, rightColor, rightColor],
+      stops: const [0.0, 0.48, 0.52, 1.0],
+    );
+  }
+
+  /// Get glow color for Arena-style shadow effect
+  static Color getGlowColor(Set<ManaColor> colors) {
+    final type = getFrameType(colors);
+    switch (type) {
+      case FrameType.colorless:
+        return const Color(0xFFD4A574);
+      case FrameType.mono:
+        return getFrameColorForSingle(colors.first);
+      case FrameType.split:
+        final sorted = sortByWubrg(colors);
+        return Color.lerp(
+          getFrameColorForSingle(sorted[0]),
+          getFrameColorForSingle(sorted[1]),
+          0.5,
+        )!;
+      case FrameType.gold:
+        return const Color(0xFFB8860B);
     }
   }
 }

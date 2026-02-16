@@ -51,6 +51,11 @@ class CardDownloadService {
         onProgress(progress, 100);
       }
 
+      // Cache art assets for card display
+      await cacheGlurgArt();
+      await cacheFrameTemplates();
+      await cacheManaSymbols();
+
       onProgress(100, 100);
       return totalImported;
     } catch (e) {
@@ -156,6 +161,11 @@ class CardDownloadService {
           if (typeLine.contains('Creature') &&
               faceData['power'] != null &&
               faceData['toughness'] != null) {
+            // Get colors: face colors > color_indicator > top-level colors
+            final faceColors = _extractColors(faceData['colors'])
+                ?? _extractColors(faceData['color_indicator'])
+                ?? _extractColors(cardData['colors'])
+                ?? '';
             creatures.add({
               'id': '${cardData['id']}_${faceData['name']}',
               'name': faceData['name'] as String,
@@ -165,6 +175,7 @@ class CardDownloadService {
               'power': faceData['power'] as String?,
               'toughness': faceData['toughness'] as String?,
               'oracleText': faceData['oracle_text'] as String? ?? '',
+              'colors': faceColors,
             });
           }
         }
@@ -184,12 +195,141 @@ class CardDownloadService {
             'power': cardData['power'] as String?,
             'toughness': cardData['toughness'] as String?,
             'oracleText': cardData['oracle_text'] as String? ?? '',
+            'colors': _extractColors(cardData['colors']) ?? '',
           });
         }
       }
     }
 
     return creatures;
+  }
+
+  /// Convert a Scryfall colors array like ["U", "B"] to comma-separated string "U,B"
+  String? _extractColors(dynamic colorsData) {
+    if (colorsData == null || colorsData is! List) return null;
+    final colors = colorsData.cast<String>().join(',');
+    return colors.isEmpty ? null : colors;
+  }
+
+  /// Fetch and cache "It Came from Planet Glurg" art_crop for offline fallback
+  Future<void> cacheGlurgArt() async {
+    try {
+      final artFile = File(await getGlurgArtPath());
+      if (await artFile.exists()) return; // Already cached
+
+      // Fetch card data from Scryfall
+      final response = await http.get(
+        Uri.parse('https://api.scryfall.com/cards/named?exact=It+Came+from+Planet+Glurg'),
+      );
+      if (response.statusCode != 200) return;
+
+      final cardData = jsonDecode(response.body) as Map<String, dynamic>;
+      final artCropUrl = cardData['image_uris']?['art_crop'] as String?;
+      if (artCropUrl == null) return;
+
+      // Download the art image
+      final artResponse = await http.get(Uri.parse(artCropUrl));
+      if (artResponse.statusCode != 200) return;
+
+      await artFile.parent.create(recursive: true);
+      await artFile.writeAsBytes(artResponse.bodyBytes);
+    } catch (_) {
+      // Non-critical - offline art just won't be available
+    }
+  }
+
+  /// Get the file path for cached Glurg art
+  static Future<String> getGlurgArtPath() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    return '${appDir.path}/glurg_art.jpg';
+  }
+
+  // ── Frame Template Images ──────────────────────────────────────
+
+  /// Template cards for each frame type - clean creatures with recognizable frames
+  static const Map<String, String> _frameTemplateCards = {
+    // Mono-color
+    'W': 'Elite Vanguard',
+    'U': 'Wind Drake',
+    'B': 'Walking Corpse',
+    'R': 'Goblin Piker',
+    'G': 'Grizzly Bears',
+    // Two-color pairs (WUBRG order)
+    'WU': 'Azorius First-Wing',
+    'WB': 'Sin Collector',
+    'WR': 'Boros Reckoner',
+    'WG': 'Fleecemane Lion',
+    'UB': 'Nightveil Specter',
+    'UR': 'Stormchaser Mage',
+    'UG': 'Coiling Oracle',
+    'BR': 'Murderous Redcap',
+    'BG': 'Lotleth Troll',
+    'RG': 'Burning-Tree Emissary',
+    // Three+ color / gold
+    'gold': 'Mantis Rider',
+    // Colorless
+    'colorless': 'Ornithopter',
+  };
+
+  /// Download and cache frame template card images for all colors
+  Future<void> cacheFrameTemplates() async {
+    final dir = await _getFrameDir();
+    await dir.create(recursive: true);
+
+    for (final entry in _frameTemplateCards.entries) {
+      try {
+        final file = File('${dir.path}/frame_${entry.key}.jpg');
+        if (await file.exists()) continue; // Already cached
+
+        // Fetch card from Scryfall
+        final encoded = Uri.encodeComponent(entry.value);
+        final response = await http.get(
+          Uri.parse('https://api.scryfall.com/cards/named?exact=$encoded'),
+        );
+        if (response.statusCode != 200) continue;
+
+        final cardData = jsonDecode(response.body) as Map<String, dynamic>;
+        final imageUrl = cardData['image_uris']?['normal'] as String?;
+        if (imageUrl == null) continue;
+
+        // Download the card image
+        final imgResponse = await http.get(Uri.parse(imageUrl));
+        if (imgResponse.statusCode != 200) continue;
+
+        await file.writeAsBytes(imgResponse.bodyBytes);
+      } catch (_) {
+        // Non-critical - skip this frame template
+      }
+    }
+  }
+
+  /// Get the path to a cached frame template image for the given color key
+  static Future<String?> getFrameTemplatePath(String colorKey) async {
+    final dir = await _getFrameDir();
+    final file = File('${dir.path}/frame_$colorKey.jpg');
+    if (await file.exists()) return file.path;
+    return null;
+  }
+
+  /// Determine which frame template key to use for a set of color letters
+  static String getFrameKey(List<String> colors) {
+    const wubrgOrder = ['W', 'U', 'B', 'R', 'G'];
+    final meaningful = colors
+        .where((c) => wubrgOrder.contains(c))
+        .toSet()
+        .toList();
+    // Sort by WUBRG order
+    meaningful.sort((a, b) => wubrgOrder.indexOf(a).compareTo(wubrgOrder.indexOf(b)));
+
+    if (meaningful.isEmpty) return 'colorless';
+    if (meaningful.length == 1) return meaningful.first;
+    if (meaningful.length == 2) return '${meaningful[0]}${meaningful[1]}';
+    return 'gold'; // 3+ colors
+  }
+
+  static Future<Directory> _getFrameDir() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    return Directory('${appDir.path}/frames');
   }
 
   /// Get estimated database size
@@ -200,5 +340,68 @@ class CardDownloadService {
     // Rough estimate: ~200 bytes per card
     final sizeInMB = (count * 200) / (1024 * 1024);
     return '${sizeInMB.toStringAsFixed(1)} MB';
+  }
+
+  // ── Mana Symbol Images ─────────────────────────────────────────
+
+  /// Download and cache all Scryfall mana symbol images
+  Future<void> cacheManaSymbols() async {
+    try {
+      final dir = await _getManaSymbolDir();
+      await dir.create(recursive: true);
+
+      // Fetch all available symbols from Scryfall
+      final response = await http.get(Uri.parse('https://api.scryfall.com/symbology'));
+      if (response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final symbols = data['data'] as List?;
+      if (symbols == null) return;
+
+      for (final sym in symbols) {
+        final symbolData = sym as Map<String, dynamic>;
+        final symbol = symbolData['symbol'] as String?;
+        final svgUri = symbolData['svg_uri'] as String?;
+
+        if (symbol == null || svgUri == null) continue;
+
+        try {
+          final file = File('${dir.path}/${_sanitizeSymbolName(symbol)}.svg');
+          if (await file.exists()) continue; // Already cached
+
+          // Download the SVG file
+          final imgResponse = await http.get(Uri.parse(svgUri));
+          if (imgResponse.statusCode != 200) continue;
+
+          await file.writeAsBytes(imgResponse.bodyBytes);
+        } catch (_) {
+          // Skip this symbol on error
+        }
+      }
+    } catch (_) {
+      // Non-critical - skip mana symbol caching
+    }
+  }
+
+  /// Get the path to a cached mana symbol SVG file
+  static Future<String?> getManaSymbolPath(String symbol) async {
+    final dir = await _getManaSymbolDir();
+    final file = File('${dir.path}/${_sanitizeSymbolName(symbol)}.svg');
+    if (await file.exists()) return file.path;
+    return null;
+  }
+
+  /// Sanitize a mana symbol name for use as a filename (e.g., "W/U" -> "WU", "{2/W}" -> "2W")
+  static String _sanitizeSymbolName(String symbol) {
+    return symbol
+        .replaceAll('{', '')
+        .replaceAll('}', '')
+        .replaceAll('/', '')
+        .toLowerCase();
+  }
+
+  static Future<Directory> _getManaSymbolDir() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    return Directory('${appDir.path}/mana_symbols');
   }
 }

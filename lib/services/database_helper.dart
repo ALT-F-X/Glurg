@@ -20,8 +20,9 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -40,12 +41,19 @@ class DatabaseHelper {
         type $textType,
         power $textNullableType,
         toughness $textNullableType,
-        oracleText $textType
+        oracleText $textType,
+        colors $textNullableType
       )
     ''');
 
     // Create index on name for faster fuzzy search
     await db.execute('CREATE INDEX idx_card_name ON cards(name)');
+  }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE cards ADD COLUMN colors TEXT');
+    }
   }
 
   /// Insert a card into the database
@@ -62,6 +70,7 @@ class DatabaseHelper {
         'power': card.power,
         'toughness': card.toughness,
         'oracleText': card.oracleText,
+        'colors': card.colors.join(','),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -131,6 +140,11 @@ class DatabaseHelper {
   }
 
   MtgCard _cardFromMap(Map<String, dynamic> map) {
+    final colorsStr = map['colors'] as String?;
+    final colors = (colorsStr != null && colorsStr.isNotEmpty)
+        ? colorsStr.split(',')
+        : <String>[];
+
     return MtgCard(
       name: map['name'] as String,
       manaCost: map['manaCost'] as String,
@@ -139,8 +153,9 @@ class DatabaseHelper {
       power: map['power'] as String?,
       toughness: map['toughness'] as String?,
       oracleText: map['oracleText'] as String,
-      imageUrl: null, // No images stored offline
+      imageUrl: null,
       scryfallUrl: null,
+      colors: colors,
     );
   }
 

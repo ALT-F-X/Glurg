@@ -8,6 +8,7 @@ class MtgCard {
   final String oracleText;
   final String? imageUrl;
   final String? scryfallUrl;
+  final List<String> colors; // e.g., ["U", "B"] for blue/black
 
   MtgCard({
     required this.name,
@@ -19,7 +20,14 @@ class MtgCard {
     required this.oracleText,
     this.imageUrl,
     this.scryfallUrl,
+    this.colors = const [],
   });
+
+  static List<String>? _parseColors(dynamic colorsData) {
+    if (colorsData == null || colorsData is! List) return null;
+    final colors = colorsData.cast<String>().toList();
+    return colors.isEmpty ? null : colors;
+  }
 
   factory MtgCard.fromJson(Map<String, dynamic> json, {String? searchName}) {
     // Handle double-faced cards
@@ -39,6 +47,12 @@ class MtgCard {
         }
       }
 
+      // Get colors: face colors > color_indicator > top-level colors
+      final faceColors = _parseColors(faceData['colors'])
+          ?? _parseColors(faceData['color_indicator'])
+          ?? _parseColors(json['colors'])
+          ?? [];
+
       return MtgCard(
         name: faceData['name'] ?? 'Unknown',
         manaCost: faceData['mana_cost'] ?? '',
@@ -49,10 +63,13 @@ class MtgCard {
         oracleText: faceData['oracle_text'] ?? '',
         imageUrl: faceData['image_uris']?['normal'] ?? json['image_uris']?['normal'],
         scryfallUrl: json['scryfall_uri'],
+        colors: faceColors,
       );
     }
-    
+
     // Handle regular single-faced cards
+    final cardColors = _parseColors(json['colors']) ?? [];
+
     return MtgCard(
       name: json['name'] ?? 'Unknown',
       manaCost: json['mana_cost'] ?? '',
@@ -63,6 +80,7 @@ class MtgCard {
       oracleText: json['oracle_text'] ?? '',
       imageUrl: json['image_uris']?['normal'],
       scryfallUrl: json['scryfall_uri'],
+      colors: cardColors,
     );
   }
 
@@ -76,6 +94,7 @@ class MtgCard {
     'oracle_text': oracleText,
     'image_uris': {'normal': imageUrl},
     'scryfall_uri': scryfallUrl,
+    'colors': colors,
   };
 }
 
