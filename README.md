@@ -109,7 +109,7 @@ You cast "It Came from Planet Glurg" and it copies 3 creatures on the battlefiel
 1. Open Glurg app
 2. Search "Grizzly Bears" → appears as 1G creature
 3. Search "Elvish Mystic" → G creature, taps for mana
-4. Search "Scute Swarm" → 1G creature with scute landfall ability
+4. Search "Scute Swarm" → 2G creature with scute landfall ability
 
 **Combined result:**
 - **Mana Value**: 5 (1+1+1+2)
@@ -241,3 +241,4 @@ This project is for personal use. Scryfall data is © Scryfall.
 ## Contact & Support
 
 For issues, questions, or feature requests, check the project notes in `.github/copilot-instructions.md`
+
