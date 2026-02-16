@@ -17,11 +17,11 @@ const double _nameTop = 0.044;
 const double _nameWidth = 0.884;
 const double _nameHeight = 0.052;
 
-// Art window zone
+// Art window zone (empirically measured from Grizzly Bears card)
 const double _artLeft = 0.049;
-const double _artTop = 0.105;
+const double _artTop = 0.076;
 const double _artWidth = 0.902;
-const double _artHeight = 0.446;
+const double _artHeight = 0.497;
 
 // Type line zone
 const double _typeLeft = 0.058;
@@ -29,11 +29,11 @@ const double _typeTop = 0.567;
 const double _typeWidth = 0.884;
 const double _typeHeight = 0.042;
 
-// Text box zone
-const double _textLeft = 0.062;
-const double _textTop = 0.622;
-const double _textWidth = 0.876;
-const double _textHeight = 0.295;
+// Text box zone (empirically measured from Grizzly Bears card)
+const double _textLeft = 0.049;
+const double _textTop = 0.615;
+const double _textWidth = 0.902;
+const double _textHeight = 0.356;
 
 // Power/toughness box zone
 const double _ptLeft = 0.755;
@@ -277,18 +277,24 @@ class _MagicCardDisplayState extends State<MagicCardDisplay> {
   // ── Name Plate ───────────────────────────────────────────────────
 
   Widget _buildNameOverlay(MergedCard card, Color frameColor) {
-    final textColor = _getTextColor(frameColor);
     final allManaSymbols = <ManaSymbol>[];
     for (final c in card.sourceCards) {
       allManaSymbols.addAll(ManaUtils.parseManaSymbols(c.manaCost));
     }
     final sorted = _sortManaSymbols(allManaSymbols);
 
+    // Determine background color based on frame type
+    final bgColor = _getNameBarBackgroundColor(frameColor);
+
+    // Determine text color: white for multi-colored, black for mono/colorless
+    final isMultiColored = frameColor == const Color(0xFFB8860B); // Gold frame
+    final textColor = isMultiColored ? Colors.white : Colors.black87;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         // Fully opaque to completely mask template card text
-        color: frameColor.withValues(alpha: 1.0),
+        color: bgColor,
         borderRadius: BorderRadius.circular(3),
       ),
       child: Row(
@@ -302,12 +308,6 @@ class _MagicCardDisplayState extends State<MagicCardDisplay> {
                   color: textColor,
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(
-                      color: textColor == Colors.white ? Colors.black54 : Colors.white30,
-                      blurRadius: 1,
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -424,11 +424,17 @@ class _MagicCardDisplayState extends State<MagicCardDisplay> {
   // ── Type Line ────────────────────────────────────────────────────
 
   Widget _buildTypeOverlay(MergedCard card, Color frameColor) {
-    final textColor = _getTextColor(frameColor);
+    // Determine background color based on frame type
+    final bgColor = _getNameBarBackgroundColor(frameColor);
+
+    // Determine text color: white for multi-colored, black for mono/colorless
+    final isMultiColored = frameColor == const Color(0xFFB8860B); // Gold frame
+    final textColor = isMultiColored ? Colors.white : Colors.black87;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: frameColor.withValues(alpha: 1.0),
+        color: bgColor,
         borderRadius: BorderRadius.circular(3),
       ),
       child: SingleChildScrollView(
@@ -619,8 +625,29 @@ class _MagicCardDisplayState extends State<MagicCardDisplay> {
     return result;
   }
 
-  Color _getTextColor(Color bg) {
-    final lum = (bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114);
-    return lum > 0.5 ? Colors.black87 : Colors.white;
+  /// Get the proper background color for name/type bars based on frame color
+  /// MTG cards use specific colors: light grey for single/colorless, gold for multi
+  Color _getNameBarBackgroundColor(Color frameColor) {
+    // Colorless/tan frame (0xFFD4A574) -> light grey
+    if (frameColor == const Color(0xFFD4A574)) {
+      return const Color(0xFFC0C0C0); // Light grey
+    }
+
+    // Single-color frames -> light grey
+    if (frameColor == const Color(0xFFF0E6D2) || // White
+        frameColor == const Color(0xFF0E47A1) || // Blue
+        frameColor == const Color(0xFF1A1A1A) || // Black
+        frameColor == const Color(0xFFC13C00) || // Red
+        frameColor == const Color(0xFF165B33)) { // Green
+      return const Color(0xFFC0C0C0); // Light grey for all mono colors
+    }
+
+    // Multi-color (gold) frame -> heathered/lighter gold
+    if (frameColor == const Color(0xFFB8860B)) {
+      return const Color(0xFFD4AF37); // Lighter gold (heathered appearance)
+    }
+
+    // Fallback to light grey
+    return const Color(0xFFC0C0C0);
   }
 }
