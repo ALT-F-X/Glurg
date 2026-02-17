@@ -7,6 +7,12 @@ import 'package:glurg_app/services/database_helper.dart';
 class CardDownloadService {
   static const String bulkDataUrl = 'https://api.scryfall.com/bulk-data';
 
+  /// Standard headers for Scryfall API requests (User-Agent required by their docs)
+  static const Map<String, String> _scryfallHeaders = {
+    'User-Agent': 'GlurgApp/1.0',
+    'Accept': 'application/json',
+  };
+
   /// Download and import all creatures with power/toughness
   /// Returns the number of cards imported
   Future<int> downloadAndImportCards({
@@ -59,16 +65,24 @@ class CardDownloadService {
       onProgress(100, 100);
       return totalImported;
     } catch (e) {
+      // Avoid double-wrapping exceptions
+      if (e is Exception) rethrow;
       throw Exception('Failed to download cards: $e');
     }
   }
 
   /// Get the download URL for the oracle cards bulk data (smaller, unique cards only)
   Future<Map<String, dynamic>> _getBulkDataUrl() async {
-    final response = await http.get(Uri.parse(bulkDataUrl));
+    final response = await http.get(
+      Uri.parse(bulkDataUrl),
+      headers: _scryfallHeaders,
+    );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to fetch bulk data info');
+      throw Exception(
+        'Failed to fetch bulk data info (HTTP ${response.statusCode}): '
+        '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+      );
     }
 
     final data = jsonDecode(response.body);
@@ -98,6 +112,7 @@ class CardDownloadService {
 
       // Start streaming download
       final request = http.Request('GET', Uri.parse(url));
+      request.headers.addAll(_scryfallHeaders);
       final response = await client.send(request).timeout(const Duration(minutes: 5));
 
       if (response.statusCode != 200) {
@@ -220,6 +235,7 @@ class CardDownloadService {
       // Fetch card data from Scryfall
       final response = await http.get(
         Uri.parse('https://api.scryfall.com/cards/named?exact=It+Came+from+Planet+Glurg'),
+        headers: _scryfallHeaders,
       );
       if (response.statusCode != 200) return;
 
@@ -228,7 +244,7 @@ class CardDownloadService {
       if (artCropUrl == null) return;
 
       // Download the art image
-      final artResponse = await http.get(Uri.parse(artCropUrl));
+      final artResponse = await http.get(Uri.parse(artCropUrl), headers: _scryfallHeaders);
       if (artResponse.statusCode != 200) return;
 
       await artFile.parent.create(recursive: true);
@@ -246,45 +262,68 @@ class CardDownloadService {
 
   // ── Frame Template Images ──────────────────────────────────────
 
-  /// Template cards for each frame type - clean creatures with recognizable frames
+  /// Template cards for each frame type — all use M15+ modern frame (2014+).
+  /// Non-legendary, non-enchantment, non-artifact creatures for clean frames.
   static const Map<String, String> _frameTemplateCards = {
-    // Mono-color
-    'W': 'Elite Vanguard',
-    'U': 'Wind Drake',
-    'B': 'Walking Corpse',
-    'R': 'Goblin Piker',
-    'G': 'Grizzly Bears',
-    // Two-color pairs (WUBRG order)
-    'WU': 'Azorius First-Wing',
-    'WB': 'Sin Collector',
-    'WR': 'Boros Reckoner',
-    'WG': 'Fleecemane Lion',
-    'UB': 'Nightveil Specter',
-    'UR': 'Stormchaser Mage',
-    'UG': 'Coiling Oracle',
-    'BR': 'Murderous Redcap',
-    'BG': 'Lotleth Troll',
-    'RG': 'Burning-Tree Emissary',
+    // Mono-color (M19/M20 core set creatures)
+    'W': 'Leonin Vanguard',
+    'U': 'Spectral Sailor',
+    'B': 'Vampire of the Dire Moon',
+    'R': 'Scorch Spitter',
+    'G': 'Llanowar Elves',
+    // Two-color pairs (WUBRG order, Guilds/Ravnica-era)
+    'WU': 'Deputy of Detention',
+    'WB': 'Cruel Celebrant',
+    'WR': 'Boros Challenger',
+    'WG': 'Knight of Autumn',
+    'UB': 'Thief of Sanity',
+    'UR': 'Crackling Drake',
+    'UG': 'Merfolk Mistbinder',
+    'BR': 'Rakdos Headliner',
+    'BG': 'Glowspore Shaman',
+    'RG': 'Zhur-Taa Goblin',
     // Three+ color / gold
-    'gold': 'Mantis Rider',
+    'gold': 'Temur Battlecrier',
     // Colorless
     'colorless': 'Ornithopter',
   };
+
+  /// Version tag — bump this whenever _frameTemplateCards changes so old
+  /// cached images get replaced on the next database update.
+  static const int _frameTemplateVersion = 2;
 
   /// Download and cache frame template card images for all colors
   Future<void> cacheFrameTemplates() async {
     final dir = await _getFrameDir();
     await dir.create(recursive: true);
 
+    // Check if cached frames are from the current template version
+    final versionFile = File('${dir.path}/.version');
+    final currentVersion = await versionFile.exists()
+        ? int.tryParse(await versionFile.readAsString()) ?? 0
+        : 0;
+    if (currentVersion != _frameTemplateVersion) {
+      // Clear old frames so they get re-downloaded with new templates
+      final files = dir.listSync().whereType<File>();
+      for (final f in files) {
+        if (f.path.endsWith('.jpg')) await f.delete();
+      }
+      await versionFile.writeAsString('$_frameTemplateVersion');
+    }
+
     for (final entry in _frameTemplateCards.entries) {
       try {
         final file = File('${dir.path}/frame_${entry.key}.jpg');
         if (await file.exists()) continue; // Already cached
 
+        // Respect Scryfall rate limit (50-100ms between requests)
+        await Future.delayed(const Duration(milliseconds: 100));
+
         // Fetch card from Scryfall
         final encoded = Uri.encodeComponent(entry.value);
         final response = await http.get(
           Uri.parse('https://api.scryfall.com/cards/named?exact=$encoded'),
+          headers: _scryfallHeaders,
         );
         if (response.statusCode != 200) continue;
 
@@ -293,7 +332,11 @@ class CardDownloadService {
         if (imageUrl == null) continue;
 
         // Download the card image
-        final imgResponse = await http.get(Uri.parse(imageUrl));
+        await Future.delayed(const Duration(milliseconds: 100));
+        final imgResponse = await http.get(
+          Uri.parse(imageUrl),
+          headers: _scryfallHeaders,
+        );
         if (imgResponse.statusCode != 200) continue;
 
         await file.writeAsBytes(imgResponse.bodyBytes);
@@ -351,7 +394,10 @@ class CardDownloadService {
       await dir.create(recursive: true);
 
       // Fetch all available symbols from Scryfall
-      final response = await http.get(Uri.parse('https://api.scryfall.com/symbology'));
+      final response = await http.get(
+        Uri.parse('https://api.scryfall.com/symbology'),
+        headers: _scryfallHeaders,
+      );
       if (response.statusCode != 200) return;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -369,8 +415,9 @@ class CardDownloadService {
           final file = File('${dir.path}/${_sanitizeSymbolName(symbol)}.svg');
           if (await file.exists()) continue; // Already cached
 
-          // Download the SVG file
-          final imgResponse = await http.get(Uri.parse(svgUri));
+          // Download the SVG file (respect Scryfall rate limit)
+          await Future.delayed(const Duration(milliseconds: 100));
+          final imgResponse = await http.get(Uri.parse(svgUri), headers: _scryfallHeaders);
           if (imgResponse.statusCode != 200) continue;
 
           await file.writeAsBytes(imgResponse.bodyBytes);

@@ -6,6 +6,10 @@ import 'package:glurg_app/services/database_helper.dart';
 
 class ScryfallService {
   static const String baseUrl = 'https://api.scryfall.com';
+  static const Map<String, String> _headers = {
+    'User-Agent': 'GlurgApp/1.0',
+    'Accept': 'application/json',
+  };
   final DatabaseHelper _db = DatabaseHelper.instance;
 
   /// Search for a single card by name (offline-first)
@@ -28,7 +32,7 @@ class ScryfallService {
         '$baseUrl/cards/named?fuzzy=${Uri.encodeComponent(cardName)}',
       );
 
-      final response = await http.get(uri).timeout(
+      final response = await http.get(uri, headers: _headers).timeout(
         const Duration(seconds: 10),
       );
 
@@ -37,6 +41,11 @@ class ScryfallService {
         return MtgCard.fromJson(json, searchName: cardName);
       } else if (response.statusCode == 404) {
         return null; // Card not found
+      } else if (response.statusCode == 400) {
+        // Scryfall returns 400 when fuzzy search is ambiguous (too many matches)
+        final errorJson = jsonDecode(response.body);
+        final details = errorJson['details'] as String? ?? 'Try a more specific name';
+        throw Exception(details);
       } else {
         throw Exception('Failed to fetch card: ${response.statusCode}');
       }
@@ -72,6 +81,7 @@ class ScryfallService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/cards/random'),
+        headers: _headers,
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {

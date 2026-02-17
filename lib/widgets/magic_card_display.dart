@@ -11,35 +11,39 @@ import 'package:glurg_app/utils/mana_utils.dart';
 /// Measured from actual MTG card images.
 const double _cardAspect = 488 / 680;
 
-// Name plate zone (as fractions of card dimensions)
-const double _nameLeft = 0.058;
-const double _nameTop = 0.044;
-const double _nameWidth = 0.884;
-const double _nameHeight = 0.052;
+// All zones measured programmatically from Llanowar Elves M15+ frame (488x680)
+// using PowerShell System.Drawing pixel scanning for exact brightness transitions.
+// M15+ frame has different widths per zone: text box is wider than name/type banners.
 
-// Art window zone (empirically measured from Grizzly Bears card)
-const double _artLeft = 0.049;
-const double _artTop = 0.076;
-const double _artWidth = 0.902;
-const double _artHeight = 0.497;
+// Name plate zone (banner with inner decorative border)
+const double _nameLeft = 0.057;   // shifted left ~20px from 0.098
+const double _nameTop = 0.050;    // y=34
+const double _nameWidth = 0.877;  // widened to keep right edge aligned
+const double _nameHeight = 0.049; // 33px (y=34 to y=67)
 
-// Type line zone
-const double _typeLeft = 0.058;
-const double _typeTop = 0.567;
-const double _typeWidth = 0.884;
-const double _typeHeight = 0.042;
+// Art window zone (recessed within frame bezel)
+const double _artLeft = 0.078;    // x=38 (after bezel at x=37)
+const double _artTop = 0.113;     // y=77
+const double _artWidth = 0.840;   // 410px to x=448
+const double _artHeight = 0.450;  // 306px (y=77 to y=383)
 
-// Text box zone (empirically measured from Grizzly Bears card)
-const double _textLeft = 0.049;
-const double _textTop = 0.615;
-const double _textWidth = 0.902;
-const double _textHeight = 0.356;
+// Type line zone (banner with inner decorative border, like name bar)
+const double _typeLeft = 0.053;   // shifted left ~20px from 0.094
+const double _typeTop = 0.565;    // y=384
+const double _typeWidth = 0.881;  // widened to keep right edge aligned
+const double _typeHeight = 0.049; // 33px (y=384 to y=417)
 
-// Power/toughness box zone
-const double _ptLeft = 0.755;
-const double _ptTop = 0.895;
-const double _ptWidth = 0.188;
-const double _ptHeight = 0.058;
+// Text box zone (parchment area, wider than banners)
+const double _textLeft = 0.074;   // x=36 (closer to frame edge)
+const double _textTop = 0.629;    // y=428
+const double _textWidth = 0.844;  // 412px to x=448
+const double _textHeight = 0.293; // 199px (y=428 to y=627)
+
+// Power/toughness box zone (bottom-right corner overlay)
+const double _ptLeft = 0.768;     // x=375
+const double _ptTop = 0.880;      // y=598 (nudged up to prevent bottom cutoff)
+const double _ptWidth = 0.150;    // 73px
+const double _ptHeight = 0.055;   // 37px (taller to prevent text clipping)
 
 class MagicCardDisplay extends StatefulWidget {
   final MergedCard mergedCard;

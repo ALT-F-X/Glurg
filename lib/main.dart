@@ -23,6 +23,7 @@ class GlurgApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CardListProvider()),
       ],
       child: MaterialApp(
+        debugShowCheckedModeBanner: false,
         title: 'Glurg - Card Copier',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
